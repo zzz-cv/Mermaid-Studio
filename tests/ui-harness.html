@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mermaid Studio UI Harness</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (() => {
+        const roots = ["C:\\Projects\\Alpha", "C:\\Projects\\Beta"];
+        const files = new Map([
+          ["C:\\Projects\\Alpha\\alpha.md", "%% type: flowchart\nflowchart LR\n  A --> B"],
+          ["C:\\Projects\\Beta\\beta.md", "%% type: sequence\nsequenceDiagram\n  A->>B: hello"],
+        ]);
+        const nameOf = (path) => path.split("\\").pop();
+        const snapshot = () => {
+          const folders = roots.map((rootPath) => {
+            const rootName = rootPath.split("\\").pop();
+            const entries = [...files.entries()].filter(([path]) => path.startsWith(`${rootPath}\\`));
+            const tree = entries.map(([path]) => ({ kind: "file", name: nameOf(path), path, relativePath: nameOf(path) }));
+            const recognized = entries.map(([path, content]) => {
+              const type = content.includes("sequence") ? "sequence" : "flowchart";
+              return { path, relativePath: nameOf(path), name: nameOf(path), rootPath, rootName, type, updatedAt: Date.now() };
+            });
+            return { rootPath, rootName, tree, recognized };
+          });
+          return { folders, recognized: folders.flatMap((folder) => folder.recognized) };
+        };
+        window.__testState = { roots, files, snapshot };
+        window.mermaidStudio = {
+          openWorkspace: async () => snapshot(),
+          refreshWorkspace: async () => snapshot(),
+          removeWorkspace: async (rootPath) => { roots.splice(roots.indexOf(rootPath), 1); return snapshot(); },
+          onWorkspaceChanged: () => () => {},
+          readFile: async (filePath) => files.get(filePath) ?? "",
+          saveFile: async (filePath, content) => { files.set(filePath, content); return snapshot(); },
+          renameFile: async (filePath, newName) => {
+            const destination = `${filePath.slice(0, filePath.lastIndexOf("\\") + 1)}${newName}`;
+            if (files.has(destination) && destination !== filePath) throw new Error("已存在同名文件，请换一个名字");
+            const content = files.get(filePath);
+            files.delete(filePath);
+            files.set(destination, content);
+            return { filePath: destination, snapshot: snapshot() };
+          },
+          createFile: async (rootPath, name, content) => {
+            const fileName = name.toLowerCase().endsWith(".md") ? name : `${name}.md`;
+            const filePath = `${rootPath}\\${fileName}`;
+            if (files.has(filePath)) throw new Error("已存在同名文件");
+            files.set(filePath, content);
+            return { filePath, snapshot: snapshot() };
+          },
+          saveAs: async (name, content, rootPath) => {
+            const fileName = name.toLowerCase().endsWith(".md") ? name : `${name}.md`;
+            const filePath = `${rootPath}\\${fileName}`;
+            if (files.has(filePath)) throw new Error("已存在同名文件，请修改文件名后再保存");
+            files.set(filePath, content);
+            return { filePath, rootPath, snapshot: snapshot() };
+          },
+          deleteFile: async (filePath) => { files.delete(filePath); return snapshot(); },
+          exportFile: async () => true,
+          exportPng: async () => true,
+          platform: "win32",
+        };
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
